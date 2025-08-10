@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\WalletAdminPageController;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,4 +16,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+Route::middleware(['web', 'auth', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/wallets', [WalletAdminPageController::class, 'index'])->name('admin.wallets.index');
+    Route::get('/wallets/create', [WalletAdminPageController::class, 'create'])->name('admin.wallets.create');
 });
