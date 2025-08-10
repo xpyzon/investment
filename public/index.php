@@ -6,6 +6,7 @@ use App\Core\Router;
 use App\Controllers\AdminWalletController;
 use App\Controllers\UserWalletController;
 use App\Controllers\WalletWebhookController;
+use App\Controllers\AdminUiController;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -13,14 +14,23 @@ Env::load(__DIR__ . '/../');
 
 $router = new Router();
 
-// Admin routes (protected by X-Admin-Key header)
+// Admin routes (API)
 $router->post('/admin/wallets', [AdminWalletController::class, 'create']);
 $router->put('/admin/wallets/{id}', [AdminWalletController::class, 'update']);
 $router->patch('/admin/wallets/{id}/toggle', [AdminWalletController::class, 'toggle']);
 $router->post('/admin/wallets/{id}/assign', [AdminWalletController::class, 'assignAll']);
 $router->post('/admin/wallets/{id}/credit-manual', [AdminWalletController::class, 'creditManual']);
 
-// User routes (protected by X-User-Id header for demo; replace with sessions later)
+// Admin UI (Tailwind)
+$router->get('/admin/ui/wallets', [AdminUiController::class, 'walletsIndex']);
+$router->get('/admin/ui/wallets/create', [AdminUiController::class, 'walletsCreateForm']);
+$router->post('/admin/ui/wallets/create', [AdminUiController::class, 'walletsCreate']);
+$router->get('/admin/ui/wallets/{id}/edit', [AdminUiController::class, 'walletsEditForm']);
+$router->post('/admin/ui/wallets/{id}/edit', [AdminUiController::class, 'walletsUpdate']);
+$router->post('/admin/ui/wallets/{id}/toggle', [AdminUiController::class, 'walletsToggle']);
+$router->post('/admin/ui/wallets/{id}/assign', [AdminUiController::class, 'walletsAssignAll']);
+
+// User routes (API)
 $router->get('/user/wallets', [UserWalletController::class, 'list']);
 $router->post('/user/wallets/{wallet_admin_id}/generate-address', [UserWalletController::class, 'generateAddress']);
 

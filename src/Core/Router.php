@@ -27,7 +27,6 @@ class Router
 
     public function dispatch(): void
     {
-        header('Content-Type: application/json');
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
@@ -54,6 +53,7 @@ class Router
         }
 
         http_response_code(404);
+        header('Content-Type: application/json');
         echo json_encode(['error' => 'Not Found']);
     }
 }

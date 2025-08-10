@@ -19,6 +19,21 @@ class Request
         return is_array($data) ? $data : [];
     }
 
+    public function form(): array
+    {
+        return $_POST ?? [];
+    }
+
+    public function query(): array
+    {
+        return $_GET ?? [];
+    }
+
+    public function method(): string
+    {
+        return strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    }
+
     public function header(string $name): ?string
     {
         $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
