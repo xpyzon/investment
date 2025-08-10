@@ -12,8 +12,8 @@ class Database
             return self::$pdo;
         }
 
-        $basePath = dirname(__DIR__);
-        $storageDir = $basePath . '/storage';
+        $basePath = __DIR__ . '/..';
+        $storageDir = realpath($basePath) . '/storage';
         if (!is_dir($storageDir)) {
             mkdir($storageDir, 0775, true);
         }

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../src/Database.php';
-require_once __DIR__ . '/../src/helpers.php';
-require_once __DIR__ . '/../src/Config.php';
-require_once __DIR__ . '/../src/NowPayments.php';
+require_once __DIR__ . '/src/Database.php';
+require_once __DIR__ . '/src/helpers.php';
+require_once __DIR__ . '/src/Config.php';
+require_once __DIR__ . '/src/NowPayments.php';
 
 $pdo = Database::getConnection();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -53,7 +53,7 @@ function handle_install_get(PDO $pdo): void {
 
 function handle_install_post(PDO $pdo): void {
     // Run schema
-    $schema = file_get_contents(__DIR__ . '/../database/schema.sql');
+    $schema = file_get_contents(__DIR__ . '/database/schema.sql');
     if ($schema === false) {
         json_response(['message' => 'Schema not found'], 500);
         return;
