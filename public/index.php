@@ -9,12 +9,27 @@ use App\Controllers\WalletWebhookController;
 use App\Controllers\AdminUiController;
 use App\Controllers\InvestmentController;
 use App\Controllers\WithdrawalController;
+use App\Controllers\UserUiController;
 
 require __DIR__ . '/../vendor/autoload.php';
 
 Env::load(__DIR__ . '/../');
 
 $router = new Router();
+
+// Public UI routes
+$router->get('/', [UserUiController::class, 'loginForm']);
+$router->get('/login', [UserUiController::class, 'loginForm']);
+$router->post('/login', [UserUiController::class, 'loginSubmit']);
+$router->post('/logout', [UserUiController::class, 'logout']);
+$router->get('/dashboard', [UserUiController::class, 'dashboard']);
+$router->get('/products', [UserUiController::class, 'products']);
+$router->get('/invest/{id}', [UserUiController::class, 'investForm']);
+$router->post('/invest/submit', [UserUiController::class, 'investSubmit']);
+$router->get('/wallets', [UserUiController::class, 'wallets']);
+$router->post('/wallets/{id}/generate', [UserUiController::class, 'walletsGenerate']);
+$router->get('/withdrawals', [UserUiController::class, 'withdrawals']);
+$router->post('/withdrawals', [UserUiController::class, 'withdrawalsSubmit']);
 
 // Admin routes (API)
 $router->post('/admin/wallets', [AdminWalletController::class, 'create']);
@@ -35,9 +50,9 @@ $router->post('/admin/ui/wallets/{id}/assign', [AdminUiController::class, 'walle
 // User routes (API)
 $router->get('/user/wallets', [UserWalletController::class, 'list']);
 $router->post('/user/wallets/{wallet_admin_id}/generate-address', [UserWalletController::class, 'generateAddress']);
-$router->get('/products', [InvestmentController::class, 'products']);
-$router->post('/invest', [InvestmentController::class, 'invest']);
-$router->post('/withdrawals/request', [WithdrawalController::class, 'request']);
+$router->get('/api/products', [InvestmentController::class, 'products']);
+$router->post('/api/invest', [InvestmentController::class, 'invest']);
+$router->post('/api/withdrawals/request', [WithdrawalController::class, 'request']);
 
 // Admin withdrawals
 $router->get('/admin/withdrawals', [WithdrawalController::class, 'adminList']);
