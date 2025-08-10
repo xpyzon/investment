@@ -10,6 +10,7 @@ use App\Controllers\AdminUiController;
 use App\Controllers\InvestmentController;
 use App\Controllers\WithdrawalController;
 use App\Controllers\UserUiController;
+use App\Controllers\MarketController;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -30,6 +31,13 @@ $router->get('/wallets', [UserUiController::class, 'wallets']);
 $router->post('/wallets/{id}/generate', [UserUiController::class, 'walletsGenerate']);
 $router->get('/withdrawals', [UserUiController::class, 'withdrawals']);
 $router->post('/withdrawals', [UserUiController::class, 'withdrawalsSubmit']);
+$router->get('/account', [UserUiController::class, 'account']);
+$router->post('/account/password', [UserUiController::class, 'accountPassword']);
+$router->get('/account/2fa/setup', [UserUiController::class, 'account2faSetup']);
+$router->post('/account/2fa/enable', [UserUiController::class, 'account2faEnable']);
+$router->post('/account/2fa/disable', [UserUiController::class, 'account2faDisable']);
+$router->get('/portfolio', [UserUiController::class, 'portfolio']);
+$router->get('/market', [UserUiController::class, 'market']);
 
 // Admin routes (API)
 $router->post('/admin/wallets', [AdminWalletController::class, 'create']);
@@ -53,6 +61,8 @@ $router->post('/user/wallets/{wallet_admin_id}/generate-address', [UserWalletCon
 $router->get('/api/products', [InvestmentController::class, 'products']);
 $router->post('/api/invest', [InvestmentController::class, 'invest']);
 $router->post('/api/withdrawals/request', [WithdrawalController::class, 'request']);
+$router->get('/api/market/prices', [MarketController::class, 'prices']);
+$router->get('/api/market/chart', [MarketController::class, 'chart']);
 
 // Admin withdrawals
 $router->get('/admin/withdrawals', [WithdrawalController::class, 'adminList']);

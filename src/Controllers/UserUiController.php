@@ -57,13 +57,21 @@ class UserUiController
             return;
         }
         $pdo = Database::pdo();
-        $stmt = $pdo->prepare('SELECT id, password_hash FROM users WHERE email=? AND is_active=1');
+        $stmt = $pdo->prepare('SELECT id, email, password_hash, twofa_secret FROM users WHERE email=? AND is_active=1');
         $stmt->execute([$email]);
         $u = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$u || !password_verify($password, (string)$u['password_hash'])) {
             $html = View::render('user/login', ['error' => 'Invalid credentials']);
             $this->response->html($html, 401);
             return;
+        }
+        $code = trim((string)($f['code'] ?? ''));
+        if (!empty($u['twofa_secret'])) {
+            if ($code === '' || !\App\Services\Totp::verifyCode((string)$u['twofa_secret'], $code)) {
+                $html = View::render('user/login', ['error' => 'Invalid 2FA code']);
+                $this->response->html($html, 401);
+                return;
+            }
         }
         setcookie('user_id', (string)$u['id'], time()+86400*7, '/', '', false, true);
         $this->response->redirect('/dashboard');
@@ -191,5 +199,87 @@ class UserUiController
         $ins = $pdo->prepare('INSERT INTO withdrawals (user_id, amount, currency, address, status) VALUES (?,?,?,?,'".'pending'".')');
         $ins->execute([(int)$user['id'], $amount, $currency, $address]);
         $this->response->redirect('/withdrawals');
+    }
+
+    public function account(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT twofa_secret FROM users WHERE id=?');
+        $stmt->execute([(int)$user['id']]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $html = View::render('user/account', ['user'=>$user, 'twofa_enabled'=>!empty($row['twofa_secret'])]);
+        $this->response->html($html);
+    }
+
+    public function accountPassword(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $f = $this->request->form();
+        $current = (string)($f['current'] ?? '');
+        $new = (string)($f['new'] ?? '');
+        if ($current==='' || $new==='') { $this->response->html('Invalid',422); return; }
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id=?');
+        $stmt->execute([(int)$user['id']]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !password_verify($current, (string)$row['password_hash'])) { $this->response->html('Wrong password',403); return; }
+        $pdo->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($new, PASSWORD_BCRYPT), (int)$user['id']]);
+        $this->response->redirect('/account');
+    }
+
+    public function account2faSetup(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $secret = \App\Services\Totp::generateSecret();
+        $uri = \App\Services\Totp::provisioningUri((string)$user['email'], 'Investment', $secret);
+        $html = View::render('user/account_2fa_setup', ['user'=>$user, 'secret'=>$secret, 'uri'=>$uri]);
+        $this->response->html($html);
+    }
+
+    public function account2faEnable(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $f = $this->request->form();
+        $secret = (string)($f['secret'] ?? '');
+        $code = (string)($f['code'] ?? '');
+        if (!\App\Services\Totp::verifyCode($secret, $code)) {
+            $uri = \App\Services\Totp::provisioningUri((string)$user['email'], 'Investment', $secret);
+            $html = View::render('user/account_2fa_setup', ['user'=>$user, 'secret'=>$secret, 'uri'=>$uri, 'error'=>'Invalid code']);
+            $this->response->html($html, 422);
+            return;
+        }
+        $pdo = Database::pdo();
+        $pdo->prepare('UPDATE users SET twofa_secret=? WHERE id=?')->execute([$secret, (int)$user['id']]);
+        $this->response->redirect('/account');
+    }
+
+    public function account2faDisable(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $pdo = Database::pdo();
+        $pdo->prepare('UPDATE users SET twofa_secret=NULL WHERE id=?')->execute([(int)$user['id']]);
+        $this->response->redirect('/account');
+    }
+
+    public function portfolio(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $pdo = Database::pdo();
+        $inv = $pdo->prepare('SELECT i.*, p.name FROM investments i JOIN products p ON p.id=i.product_id WHERE i.user_id=? ORDER BY i.created_at DESC');
+        $inv->execute([(int)$user['id']]);
+        $investments = $inv->fetchAll(PDO::FETCH_ASSOC);
+        $tx = $pdo->prepare('SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 50');
+        $tx->execute([(int)$user['id']]);
+        $transactions = $tx->fetchAll(PDO::FETCH_ASSOC);
+        $html = View::render('user/portfolio', ['user'=>$user, 'investments'=>$investments, 'transactions'=>$transactions]);
+        $this->response->html($html);
+    }
+
+    public function market(): void
+    {
+        $user = $this->getUserOrRedirect();
+        $html = View::render('user/market', ['user'=>$user]);
+        $this->response->html($html);
     }
 }

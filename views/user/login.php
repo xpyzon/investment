@@ -15,6 +15,10 @@ ob_start();
       <label class="block text-sm font-semibold mb-1">Password</label>
       <input class="bw-input" type="password" name="password" required />
     </div>
+    <div>
+      <label class="block text-sm font-semibold mb-1">2FA code (if enabled)</label>
+      <input class="bw-input" type="text" name="code" pattern="\d{6}" />
+    </div>
     <button class="bw-btn" type="submit">Sign in</button>
   </form>
 </div>

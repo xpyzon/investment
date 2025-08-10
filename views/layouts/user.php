@@ -26,6 +26,9 @@
         <a href="/products" class="mr-4">Products</a>
         <a href="/wallets" class="mr-4">Deposit</a>
         <a href="/withdrawals" class="mr-4">Withdraw</a>
+        <a href="/portfolio" class="mr-4">Portfolio</a>
+        <a href="/market" class="mr-4">Market</a>
+        <a href="/account" class="mr-4">Account</a>
         <form action="/logout" method="post" class="inline"><button class="bw-btn" type="submit">Logout</button></form>
       </nav>
     </div>
