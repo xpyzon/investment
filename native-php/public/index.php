@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../src/Database.php';
 require_once __DIR__ . '/../src/helpers.php';
+require_once __DIR__ . '/../src/Config.php';
+require_once __DIR__ . '/../src/NowPayments.php';
 
 $pdo = Database::getConnection();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -150,6 +152,7 @@ function admin_wallet_store(PDO $pdo): void {
             'confirmations' => 'required|integer|min:0|max:100',
             'icon_url' => 'url|max:255',
             'is_enabled' => 'boolean',
+            'use_nowpayments' => 'boolean',
         ]);
         $defaults = [
             'address_template' => null,
@@ -157,12 +160,13 @@ function admin_wallet_store(PDO $pdo): void {
             'tag_label' => null,
             'icon_url' => null,
             'is_enabled' => 1,
+            'use_nowpayments' => 0,
         ];
         $data = array_merge($defaults, $data);
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO wallet_admin (name, currency, network, address_template, requires_tag, tag_label, confirmations, icon_url, is_enabled, created_by, updated_by, created_at, updated_at) VALUES (:name, :currency, :network, :address_template, :requires_tag, :tag_label, :confirmations, :icon_url, :is_enabled, :created_by, :updated_by, :now, :now)');
+            $stmt = $pdo->prepare('INSERT INTO wallet_admin (name, currency, network, address_template, requires_tag, tag_label, confirmations, icon_url, is_enabled, use_nowpayments, created_by, updated_by, created_at, updated_at) VALUES (:name, :currency, :network, :address_template, :requires_tag, :tag_label, :confirmations, :icon_url, :is_enabled, :use_nowpayments, :created_by, :updated_by, :now, :now)');
             $stmt->execute([
                 ':name' => $data['name'],
                 ':currency' => $data['currency'],
@@ -173,6 +177,7 @@ function admin_wallet_store(PDO $pdo): void {
                 ':confirmations' => (int)$data['confirmations'],
                 ':icon_url' => $data['icon_url'],
                 ':is_enabled' => (int)$data['is_enabled'],
+                ':use_nowpayments' => (int)$data['use_nowpayments'],
                 ':created_by' => (int)$admin['id'],
                 ':updated_by' => (int)$admin['id'],
                 ':now' => now_iso8601(),
@@ -216,13 +221,13 @@ function admin_wallet_update(PDO $pdo, array $params): void {
     json_try(function () use ($pdo, $admin, $id) {
         $data = json_input();
         // Whitelist
-        $fields = ['name','currency','network','address_template','requires_tag','tag_label','confirmations','icon_url','is_enabled'];
+        $fields = ['name','currency','network','address_template','requires_tag','tag_label','confirmations','icon_url','is_enabled','use_nowpayments'];
         $sets = [];
         $bind = [':id' => $id, ':now' => now_iso8601(), ':updated_by' => (int)$admin['id']];
         foreach ($fields as $f) {
             if (array_key_exists($f, $data)) {
                 $sets[] = "$f = :$f";
-                $bind[":$f"] = $f === 'requires_tag' || $f === 'is_enabled' ? (int)$data[$f] : $data[$f];
+                $bind[":$f"] = in_array($f, ['requires_tag','is_enabled','use_nowpayments'], true) ? (int)$data[$f] : $data[$f];
             }
         }
         if (!$sets) { json_response($pdo->query('SELECT * FROM wallet_admin WHERE id = ' . $id)->fetch()); return; }
@@ -534,6 +539,93 @@ function wallet_webhook_handle(PDO $pdo): void {
     });
 }
 
+// Admin settings
+function admin_settings_get(PDO $pdo): void {
+    require_admin($pdo);
+    $all = Config::getAll();
+    json_response([
+        'nowpayments_api_key' => $all['nowpayments_api_key'] ?? null,
+        'ipn_secret_key' => $all['ipn_secret_key'] ?? null,
+    ]);
+}
+
+function admin_settings_update(PDO $pdo): void {
+    require_admin($pdo);
+    json_try(function () {
+        $data = json_input();
+        $allowed = [];
+        if (isset($data['nowpayments_api_key'])) $allowed['nowpayments_api_key'] = (string)$data['nowpayments_api_key'];
+        if (isset($data['ipn_secret_key'])) $allowed['ipn_secret_key'] = (string)$data['ipn_secret_key'];
+        $saved = Config::setMany($allowed);
+        json_response(['ok' => true, 'settings' => [
+            'nowpayments_api_key' => $saved['nowpayments_api_key'] ?? null,
+            'ipn_secret_key' => $saved['ipn_secret_key'] ?? null,
+        ]]);
+    });
+}
+
+// NOWPayments IPN
+function nowpayments_ipn(PDO $pdo): void {
+    $raw = file_get_contents('php://input') ?: '';
+    $sig = $_SERVER['HTTP_X_NOWPAYMENTS_SIG'] ?? '';
+    if (!NowPayments::verifyIpn($raw, $sig)) {
+        json_response(['message' => 'Invalid signature'], 400);
+        return;
+    }
+    $payload = json_decode($raw, true) ?: [];
+    $status = strtolower((string)($payload['payment_status'] ?? ''));
+    $txid = (string)($payload['transaction_id'] ?? $payload['payment_id'] ?? '');
+    $payAmount = (string)($payload['pay_amount'] ?? '0');
+    $payCurrency = strtoupper((string)($payload['pay_currency'] ?? ''));
+
+    // Resolve wallet by currency and use_nowpayments flag
+    $stmt = $pdo->prepare('SELECT * FROM wallet_admin WHERE UPPER(currency) = :cur AND use_nowpayments = 1 LIMIT 1');
+    $stmt->execute([':cur' => $payCurrency]);
+    $wa = $stmt->fetch();
+    if (!$wa) { json_response(['ok' => true]); return; }
+
+    $finalStatus = in_array($status, ['finished','confirmed','completed','paid'], true) ? 'confirmed' : 'pending';
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM deposits WHERE txid = :tx LIMIT 1');
+        $stmt->execute([':tx' => $txid]);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            $prev = $existing['status'];
+            $stmt = $pdo->prepare('UPDATE deposits SET amount = :amt, currency = :cur, address = :addr, network = :net, status = :status, confirmations = :conf, wallet_admin_id = :wid, updated_at = :now WHERE id = :id');
+            $stmt->execute([
+                ':amt' => $payAmount,
+                ':cur' => $payCurrency,
+                ':addr' => 'NOWPAYMENTS',
+                ':net' => $wa['network'],
+                ':status' => $finalStatus,
+                ':conf' => 0,
+                ':wid' => (int)$wa['id'],
+                ':now' => now_iso8601(),
+                ':id' => (int)$existing['id'],
+            ]);
+        } else {
+            $stmt = $pdo->prepare('INSERT INTO deposits (user_id, amount, currency, txid, address, network, status, confirmations, wallet_admin_id, created_at, updated_at) VALUES (NULL, :amt, :cur, :tx, :addr, :net, :status, 0, :wid, :now, :now)');
+            $stmt->execute([
+                ':amt' => $payAmount,
+                ':cur' => $payCurrency,
+                ':tx' => $txid,
+                ':addr' => 'NOWPAYMENTS',
+                ':net' => $wa['network'],
+                ':status' => $finalStatus,
+                ':wid' => (int)$wa['id'],
+                ':now' => now_iso8601(),
+            ]);
+        }
+        $pdo->commit();
+        json_response(['ok' => true]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        json_response(['message' => 'IPN failed'], 500);
+    }
+}
+
 // Define routes
 route('GET', '/install', fn($pdo) => handle_install_get($pdo));
 route('POST', '/install', fn($pdo) => handle_install_post($pdo));
@@ -541,6 +633,10 @@ route('POST', '/install', fn($pdo) => handle_install_post($pdo));
 route('POST', '/api/login', fn($pdo) => handle_login($pdo));
 route('POST', '/api/logout', fn($pdo) => handle_logout($pdo));
 route('GET', '/api/user', fn($pdo) => handle_me($pdo));
+
+// Settings routes
+route('GET', '/api/admin/settings', fn($pdo) => admin_settings_get($pdo));
+route('POST', '/api/admin/settings', fn($pdo) => admin_settings_update($pdo));
 
 route('GET', '/api/admin/wallets', fn($pdo) => admin_wallet_index($pdo));
 route('POST', '/api/admin/wallets', fn($pdo) => admin_wallet_store($pdo));
@@ -552,7 +648,10 @@ route('POST', '/api/admin/wallets/{id}/credit-manual', fn($pdo, $p) => admin_wal
 route('GET', '/api/user/wallets', fn($pdo) => user_wallets_index($pdo));
 route('POST', '/api/user/wallets/{wallet_admin_id}/generate-address', fn($pdo, $p) => user_wallet_generate_address($pdo, $p));
 
+// Generic webhook retained for address-based flows
 route('POST', '/api/wallets/webhook', fn($pdo) => wallet_webhook_handle($pdo));
+// NOWPayments IPN endpoint
+route('POST', '/api/nowpayments/ipn', fn($pdo) => nowpayments_ipn($pdo));
 
 // Dispatch
 if ($method === 'POST' && ($_POST['_method'] ?? '') !== '') {

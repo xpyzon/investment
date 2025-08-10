@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS wallet_admin (
   confirmations INTEGER NOT NULL DEFAULT 0,
   icon_url TEXT,
   is_enabled INTEGER NOT NULL DEFAULT 1,
+  use_nowpayments INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER,
   updated_by INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
