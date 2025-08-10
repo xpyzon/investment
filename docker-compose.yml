@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  app:
+    image: richarvey/nginx-php-fpm:php8.2
+    container_name: investment_php
+    environment:
+      - NGINX_ROOT=/var/www/html/public
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - db
+
+  db:
+    image: mariadb:10.11
+    container_name: investment_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=investment
+      - MYSQL_USER=app
+      - MYSQL_PASSWORD=app
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:
