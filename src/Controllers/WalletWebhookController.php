@@ -7,6 +7,8 @@ use App\Core\Database;
 use App\Core\Env;
 use App\Core\Request;
 use App\Core\Response;
+use App\Services\Mailer;
+use App\Services\EmailTemplates;
 use PDO;
 
 class WalletWebhookController
@@ -48,15 +50,17 @@ class WalletWebhookController
 
         $pdo = Database::pdo();
         // Find matching user wallet
-        $find = $pdo->prepare('SELECT uw.*, wa.confirmations as required_confirmations FROM user_wallets uw JOIN wallet_admin wa ON wa.id = uw.wallet_admin_id WHERE (uw.deposit_address = ? OR uw.deposit_tag = ?) LIMIT 1');
+        $find = $pdo->prepare('SELECT uw.*, wa.confirmations as required_confirmations, u.email, u.name FROM user_wallets uw JOIN wallet_admin wa ON wa.id = uw.wallet_admin_id JOIN users u ON u.id=uw.user_id WHERE (uw.deposit_address = ? OR uw.deposit_tag = ?) LIMIT 1');
         $find->execute([$to, $memo]);
         $uw = $find->fetch(PDO::FETCH_ASSOC);
 
         $status = 'pending';
         $userId = null;
         $required = 3;
+        $userEmail = null;
         if ($uw) {
             $userId = (int)$uw['user_id'];
+            $userEmail = $uw['email'] ?? null;
             $required = (int)($uw['required_confirmations'] ?? 3);
             if ($confirmations >= $required) { $status = 'confirmed'; }
         } else {
@@ -71,7 +75,7 @@ class WalletWebhookController
         }
 
         // Upsert deposit
-        $dep = $pdo->prepare('SELECT id, status FROM deposits WHERE txid = ? LIMIT 1');
+        $dep = $pdo->prepare('SELECT id, status, user_id FROM deposits WHERE txid = ? LIMIT 1');
         $dep->execute([$txid]);
         $existing = $dep->fetch(PDO::FETCH_ASSOC);
 
@@ -83,6 +87,17 @@ class WalletWebhookController
             $ins->execute([$userId, $amount, $currency, $txid, $to, $network, $status]);
         }
 
+        // Notifications (HTML)
+        if ($userEmail) {
+            $mailer = new Mailer();
+            if ($status === 'confirmed') {
+                $mailer->send($userEmail, 'Deposit confirmed', EmailTemplates::depositConfirmed($currency, (string)$amount, $txid));
+            } else {
+                $mailer->send($userEmail, 'Deposit received (pending)', EmailTemplates::depositPending($currency, (string)$amount, $required, $txid));
+            }
+        }
+
+        // Credit ledger on confirm
         if ($status === 'confirmed' && $userId) {
             $txn = $pdo->prepare('INSERT INTO transactions (user_id, type, amount, currency, meta) VALUES (?,?,?,?,?)');
             $txn->execute([$userId, 'deposit', $amount, $currency, json_encode(['txid' => $txid])]);

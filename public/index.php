@@ -7,6 +7,8 @@ use App\Controllers\AdminWalletController;
 use App\Controllers\UserWalletController;
 use App\Controllers\WalletWebhookController;
 use App\Controllers\AdminUiController;
+use App\Controllers\InvestmentController;
+use App\Controllers\WithdrawalController;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -33,6 +35,14 @@ $router->post('/admin/ui/wallets/{id}/assign', [AdminUiController::class, 'walle
 // User routes (API)
 $router->get('/user/wallets', [UserWalletController::class, 'list']);
 $router->post('/user/wallets/{wallet_admin_id}/generate-address', [UserWalletController::class, 'generateAddress']);
+$router->get('/products', [InvestmentController::class, 'products']);
+$router->post('/invest', [InvestmentController::class, 'invest']);
+$router->post('/withdrawals/request', [WithdrawalController::class, 'request']);
+
+// Admin withdrawals
+$router->get('/admin/withdrawals', [WithdrawalController::class, 'adminList']);
+$router->post('/admin/withdrawals/{id}/approve', [WithdrawalController::class, 'adminApprove']);
+$router->post('/admin/withdrawals/{id}/reject', [WithdrawalController::class, 'adminReject']);
 
 // Webhook
 $router->post('/wallets/webhook', [WalletWebhookController::class, 'handle']);
