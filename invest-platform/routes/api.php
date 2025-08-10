@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\WalletAdminController;
 use App\Http\Controllers\User\UserWalletController;
 use App\Http\Controllers\WalletWebhookController;
+use App\Http\Controllers\AuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,6 +17,9 @@ use App\Http\Controllers\WalletWebhookController;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
+
+Route::post('/login', [AuthController::class, 'login']);
+Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
