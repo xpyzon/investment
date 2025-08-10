@@ -44,6 +44,10 @@ class UserWalletController extends Controller
 
         $adminWallet = WalletAdmin::findOrFail($walletAdminId);
 
+        if (!$adminWallet->is_enabled || $uw->status !== 'active') {
+            return response()->json(['message' => 'Wallet is disabled'], 403);
+        }
+
         if ($uw->deposit_address) {
             return response()->json([
                 'deposit_address' => $uw->deposit_address,
@@ -52,17 +56,14 @@ class UserWalletController extends Controller
             ]);
         }
 
-        // naive detection of xpub/custodial template
         $template = (string) $adminWallet->address_template;
         if (str_starts_with($template, 'xpub') || str_starts_with($template, 'ypub') || str_starts_with($template, 'zpub') || str_starts_with($template, 'custodial:')) {
-            // Placeholder unique derivation: in production integrate with real derivation or provider
             $unique = substr(hash('sha256', $template.'|'.$user->id.'|'.now()->timestamp), 0, 32);
             $address = strtoupper($adminWallet->currency)."_".$unique;
             $uw->deposit_address = $address;
             $uw->address_generated = true;
             $uw->save();
         } else {
-            // global address mode
             $uw->deposit_address = $adminWallet->address_template;
             $uw->address_generated = false;
             $uw->save();

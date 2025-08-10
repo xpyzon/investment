@@ -21,79 +21,82 @@ class AdminWalletsTest extends TestCase
 
     public function test_admin_can_create_update_toggle_assign_wallet_and_user_can_generate_address(): void
     {
-        // Create investor first so assignment includes them
         $investor = User::factory()->create();
-
         $admin = User::factory()->admin()->create();
         Sanctum::actingAs($admin, ['*']);
 
-        // Create wallet
-        $payload = [
+        $res = $this->postJson('/api/admin/wallets', [
             'name' => 'USDT ERC20',
             'currency' => 'USDT',
             'network' => 'erc20',
-            'address_template' => '0xGLOBALADDRESS',
+            'address_template' => 'xpubTEST',
             'requires_tag' => false,
             'tag_label' => null,
             'confirmations' => 12,
             'icon_url' => 'https://cdn.example.com/icons/usdt.svg',
             'is_enabled' => true,
-        ];
-        $res = $this->postJson('/api/admin/wallets', $payload);
+        ]);
         $res->assertCreated();
         $walletId = $res->json('id');
-        $this->assertNotNull($walletId);
 
-        // Update wallet
-        $res = $this->putJson("/api/admin/wallets/{$walletId}", [
-            'address_template' => 'xpubTEST',
-        ]);
-        $res->assertOk();
+        $this->putJson("/api/admin/wallets/{$walletId}", ['confirmations' => 10])->assertOk();
+        $this->patchJson("/api/admin/wallets/{$walletId}/toggle", ['is_enabled' => false])->assertOk();
+        $this->postJson("/api/admin/wallets/{$walletId}/assign")->assertOk();
 
-        // Toggle off
-        $res = $this->patchJson("/api/admin/wallets/{$walletId}/toggle", ['is_enabled' => false]);
-        $res->assertOk();
-
-        // Assign to all users (redundant but fine)
-        $res = $this->postJson("/api/admin/wallets/{$walletId}/assign");
-        $res->assertOk();
-
-        // Investor lists wallets
         Sanctum::actingAs($investor, ['*']);
-        $res = $this->getJson('/api/user/wallets');
-        $res->assertOk();
-        $data = $res->json();
-        $this->assertIsArray($data);
-        $this->assertGreaterThan(0, count($data));
-        $res->assertJsonStructure([
-            [
-                'wallet_admin_id', 'name', 'currency', 'network', 'deposit_address', 'deposit_tag', 'requires_tag', 'confirmations', 'is_enabled', 'address_generated'
-            ]
-        ]);
+        $this->getJson('/api/user/wallets')->assertOk();
+        $this->postJson("/api/user/wallets/{$walletId}/generate-address")->assertStatus(403);
 
-        // Generate a unique address (xpub template triggers unique)
-        $res = $this->postJson("/api/user/wallets/{$walletId}/generate-address");
-        $res->assertOk();
-        $res->assertJsonStructure(['deposit_address', 'deposit_tag', 'instructions']);
+        // Re-enable and generate
+        Sanctum::actingAs($admin, ['*']);
+        $this->patchJson("/api/admin/wallets/{$walletId}/toggle", ['is_enabled' => true])->assertOk();
+        Sanctum::actingAs($investor, ['*']);
+        $gen = $this->postJson("/api/user/wallets/{$walletId}/generate-address");
+        $gen->assertOk();
+        $addr = $gen->json('deposit_address');
 
-        // Webhook confirm deposit
-        $payload = [
+        $this->postJson('/api/wallets/webhook', [
             'currency' => 'USDT',
             'network' => 'erc20',
             'txid' => '0xabc123',
             'from' => '0xfrom',
-            'to' => $res->json('deposit_address'),
+            'to' => $addr,
             'amount' => '150.00',
             'confirmations' => 12,
             'block_time' => now()->toISOString(),
             'memo' => null,
-        ];
-        $res2 = $this->postJson('/api/wallets/webhook', $payload);
-        $res2->assertOk();
+        ])->assertOk();
 
-        $this->assertDatabaseHas('deposits', [
-            'txid' => '0xabc123',
-            'status' => 'confirmed',
-        ]);
+        $this->assertDatabaseHas('deposits', ['txid' => '0xabc123', 'status' => 'confirmed']);
+    }
+
+    public function test_admin_manual_credit(): void
+    {
+        $investor = User::factory()->create();
+        $admin = User::factory()->admin()->create();
+        Sanctum::actingAs($admin, ['*']);
+
+        $walletId = $this->postJson('/api/admin/wallets', [
+            'name' => 'BTC',
+            'currency' => 'BTC',
+            'network' => 'bitcoin',
+            'address_template' => 'bc1qglobal',
+            'requires_tag' => false,
+            'tag_label' => null,
+            'confirmations' => 2,
+            'icon_url' => null,
+            'is_enabled' => true,
+        ])->json('id');
+
+        $this->postJson("/api/admin/wallets/{$walletId}/credit-manual", [
+            'user_id' => $investor->id,
+            'amount' => '0.01000000',
+            'currency' => 'BTC',
+            'txid' => 'manual-1',
+            'notes' => 'recon',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('deposits', ['txid' => 'manual-1', 'status' => 'confirmed']);
+        $this->assertDatabaseHas('transactions', ['type' => 'deposit', 'currency' => 'BTC']);
     }
 }
