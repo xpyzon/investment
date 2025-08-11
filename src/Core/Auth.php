@@ -20,12 +20,13 @@ class Auth
 
     public static function requireUser(?string $userIdHeader): int
     {
-        if (!$userIdHeader) {
+        $userIdSource = $userIdHeader ?: ($_COOKIE['user_id'] ?? null);
+        if (!$userIdSource) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized (user)']);
             exit;
         }
-        $userId = (int)$userIdHeader;
+        $userId = (int)$userIdSource;
 
         $pdo = Database::pdo();
         $stmt = $pdo->prepare('SELECT id FROM users WHERE id = ? AND is_active = 1');
