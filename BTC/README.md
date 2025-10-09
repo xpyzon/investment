@@ -9,7 +9,10 @@ This is a Go implementation of a Bitcoin address checker that generates random m
 - Checks address balances via blockchain.info API
 - Colored console output (green for found addresses, red for errors)
 - Logs addresses with balance to `balanced_addresses.txt`
-- Rate limiting with 5-second delays between API calls
+- Rate limiting with 1-second delays between API calls
+- **Stops after finding the first address with balance**
+- **Tests up to 1 billion addresses**
+- Progress reporting every 10,000 addresses
 
 ## Requirements
 
@@ -36,17 +39,18 @@ Run the application:
 ```
 
 The program will:
-1. Generate 100,000 random mnemonic phrases
+1. Generate up to 1 billion random mnemonic phrases
 2. Derive Bitcoin addresses from each phrase
 3. Check the balance of each address
-4. Display results in the console
-5. Log any addresses with balance > 0 to `balanced_addresses.txt`
+4. Display progress every 10,000 addresses
+5. **Stop immediately after finding the first address with balance**
+6. Log the found address with balance to `balanced_addresses.txt`
 
 ## Output
 
 - **Green text**: Addresses with balance found
 - **Red text**: Network errors
-- **Regular text**: Addresses with zero balance (skipped)
+- **Regular text**: Progress updates every 10,000 addresses
 
 ## Files Created
 

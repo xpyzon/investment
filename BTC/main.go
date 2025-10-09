@@ -19,7 +19,7 @@ import (
 
 const (
 	timeout   = 10 * time.Second
-	sleepTime = 5 * time.Second
+	sleepTime = 1 * time.Second // Reduced sleep time for faster processing
 )
 
 // Colors for output
@@ -41,9 +41,10 @@ func main() {
 	defer writer.Flush()
 
 	fmt.Println("Starting Bitcoin address checker...")
-	fmt.Println("Generating and checking 100,000 addresses...")
+	fmt.Println("Generating and checking up to 1 billion addresses...")
+	fmt.Println("Will stop after finding the first address with balance.")
 
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 1000000000; i++ { // 1 billion addresses
 		// Generate mnemonic (128 bits = 12 words)
 		entropy, err := bip39.NewEntropy(128)
 		if err != nil {
@@ -109,19 +110,26 @@ func main() {
 			green.Printf("FOUND: %s -> %s has %d satoshis\n", mnemonic, addressStr, balance)
 			
 			// Log to file
-			logEntry := fmt.Sprintf("Seed: %s\nAddress: %s\nBalance: %d satoshis\n\n", 
-				mnemonic, addressStr, balance)
+			logEntry := fmt.Sprintf("Seed: %s\nAddress: %s\nBalance: %d satoshis\nChecked %d addresses before finding this one.\n\n", 
+				mnemonic, addressStr, balance, i+1)
 			writer.WriteString(logEntry)
 			writer.Flush() // Ensure immediate writing
+			
+			// Stop after finding the first result
+			fmt.Printf("SUCCESS! Found first address with balance after checking %d addresses.\n", i+1)
+			return
 		} else {
-			fmt.Printf("SKIPPING: %s -> %s\n", mnemonic, addressStr)
+			// Only print every 10,000 addresses to avoid spam
+			if (i+1)%10000 == 0 {
+				fmt.Printf("Checked %d addresses... (Latest: %s -> %s)\n", i+1, mnemonic, addressStr)
+			}
 		}
 
 		// Sleep between requests to avoid rate limiting
 		time.Sleep(sleepTime)
 	}
 
-	fmt.Println("Finished checking addresses.")
+	fmt.Println("Finished checking all 1 billion addresses without finding any with balance.")
 }
 
 // checkBalance queries the blockchain.info API for address balance
