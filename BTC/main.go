@@ -19,7 +19,7 @@ import (
 
 const (
 	timeout   = 10 * time.Second
-	sleepTime = 1 * time.Second // Reduced sleep time for faster processing
+	sleepTime = 10 * time.Second // Increased to avoid rate limiting
 )
 
 // Colors for output
